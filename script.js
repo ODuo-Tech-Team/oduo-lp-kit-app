@@ -31,9 +31,9 @@ const ESTADO_INICIAL = () => ({
       diferenciais: ['', '', '']
     },
     produtos: [
-      { nome: '', descricao: '', imagem: null },
-      { nome: '', descricao: '', imagem: null },
-      { nome: '', descricao: '', imagem: null }
+      { nome: '', descricao: '', imagem: null, catalogoPdf: null },
+      { nome: '', descricao: '', imagem: null, catalogoPdf: null },
+      { nome: '', descricao: '', imagem: null, catalogoPdf: null }
     ],
     tom: {
       tom: 'proximo-tecnico',
@@ -90,11 +90,11 @@ const el = (html) => {
   return wrap.firstElementChild;
 };
 
-function lerArquivo(file) {
+function lerArquivo(file, limiteMB = 5) {
   return new Promise((resolve, reject) => {
     if (!file) return resolve(null);
-    if (file.size > 5 * 1024 * 1024) {
-      return reject(new Error('Arquivo passa de 5 MB. Comprima ou escolha outro.'));
+    if (file.size > limiteMB * 1024 * 1024) {
+      return reject(new Error(`Arquivo passa de ${limiteMB} MB. Comprima ou escolha outro.`));
     }
     const reader = new FileReader();
     reader.onload = () => resolve({
@@ -162,14 +162,46 @@ function render() {
     navbar.hidden = true;
     screen.appendChild(qs('#tplSucesso').content.cloneNode(true));
     qs('#debugJson').textContent = JSON.stringify(STATE.dados, (k, v) => {
-      // Não dumpa dataURLs gigantes no preview
       if (k === 'dataURL' && typeof v === 'string' && v.length > 100) return `[base64 ${v.length} chars]`;
       return v;
     }, 2);
+
+    // Se tem resposta do backend (modo conectado), mostra link do repo
+    const resp = STATE.dados._resposta;
+    if (resp && resp.repo && resp.repo.url) {
+      const info = qs('#repoInfo');
+      info.hidden = false;
+      info.style.cssText = 'background:var(--bg-alt);padding:16px;border-radius:10px;margin-top:18px;font-size:14px;';
+      info.innerHTML = `
+        <strong>Recebido com sucesso.</strong><br>
+        <span style="color:var(--text-muted);">Time interno: repo no GitHub criado em
+          <a href="${resp.repo.url}" target="_blank" rel="noopener" style="color:var(--primary);">
+            ${resp.repo.nome}
+          </a>
+        </span>
+      `;
+    } else if (resp && resp.offline) {
+      const info = qs('#repoInfo');
+      info.hidden = false;
+      info.style.cssText = 'background:var(--bg-alt);padding:14px;border-radius:10px;margin-top:18px;font-size:13px;color:var(--text-muted);';
+      info.textContent = 'Modo offline (file://) — nenhum repo foi criado. Faça deploy do app pra usar o envio real.';
+    }
+
     qs('#btnReiniciar').addEventListener('click', () => {
       resetar();
       irPara(0);
     });
+    return;
+  }
+
+  if (STATE.view === 'erro') {
+    topbarMeta.hidden = true;
+    navbar.hidden = true;
+    screen.appendChild(qs('#tplErro').content.cloneNode(true));
+    const msg = STATE.dados._erro || 'Houve um erro ao mandar pro servidor.';
+    qs('#erroMsg').textContent = msg;
+    qs('#btnTentarDeNovo').addEventListener('click', () => { enviar(); });
+    qs('#btnVoltarRevisar').addEventListener('click', () => { irPara(TOTAL_ETAPAS); });
     return;
   }
 
@@ -481,10 +513,21 @@ const ETAPAS = {
             <label class="field__label">Foto do produto <span class="req">*</span></label>
             <label class="upload ${p.imagem ? 'is-filled' : ''}">
               <input type="file" accept="image/png,image/jpeg,image/webp" data-produto-imagem="${i}">
-              ${p.imagem ? renderUploadPreview(p.imagem, 'produto', i) : `
+              ${p.imagem ? renderUploadPreview(p.imagem, 'produto-imagem', i) : `
                 <i class="fa-solid fa-image upload__icon"></i>
                 <div class="upload__label">Adicionar foto</div>
                 <div class="upload__hint">JPG, PNG ou WebP — até 5 MB</div>
+              `}
+            </label>
+          </div>
+          <div class="field">
+            <label class="field__label">Catálogo (PDF) <span class="opt">(opcional)</span></label>
+            <label class="upload ${p.catalogoPdf ? 'is-filled' : ''}">
+              <input type="file" accept="application/pdf" data-produto-pdf="${i}">
+              ${p.catalogoPdf ? renderUploadPreview(p.catalogoPdf, 'produto-pdf', i) : `
+                <i class="fa-solid fa-file-pdf upload__icon"></i>
+                <div class="upload__label">Anexar catálogo</div>
+                <div class="upload__hint">PDF com especificações — até 10 MB</div>
               `}
             </label>
           </div>
@@ -588,7 +631,7 @@ const ETAPAS = {
             ${item('Tipografia', fonte ? fonte.nome : '—')}
             ${item('Anos de mercado', d.sobre.anosMercado + (d.sobre.anosMercado ? ' anos' : ''))}
             ${item('Diferenciais', diferenciais.length ? `<ul>${diferenciais.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '—', null, true)}
-            ${item('Produtos', `${produtosCompletos.length} preenchido(s)` + (produtosCompletos.length ? `<ul>${produtosCompletos.map(p => `<li>${esc(p.nome)}</li>`).join('')}</ul>` : ''), null, true)}
+            ${item('Produtos', `${produtosCompletos.length} preenchido(s)` + (produtosCompletos.length ? `<ul>${produtosCompletos.map(p => `<li>${esc(p.nome)}${p.catalogoPdf ? ' <span style="color:var(--text-muted);font-size:12px;">(com catálogo)</span>' : ''}</li>`).join('')}</ul>` : ''), null, true)}
             ${item('Tom', tomLabel(d.tom.tom))}
           </div>
         </div>
@@ -736,10 +779,32 @@ function bindProdutos(wrap) {
       const file = e.target.files[0];
       if (!file) return;
       try {
-        STATE.dados.produtos[idx].imagem = await lerArquivo(file);
+        STATE.dados.produtos[idx].imagem = await lerArquivo(file, 5);
         salvar();
         ETAPAS[6].render(wrap);
       } catch (err) { alert(err.message); }
+    });
+  });
+  qsa('input[data-produto-pdf]', wrap).forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const idx = +input.dataset.produtoPdf;
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        STATE.dados.produtos[idx].catalogoPdf = await lerArquivo(file, 10);
+        salvar();
+        ETAPAS[6].render(wrap);
+      } catch (err) { alert(err.message); }
+    });
+  });
+  qsa('[data-remover-upload-pdf-produto]', wrap).forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = +btn.dataset.removerUploadPdfProduto;
+      STATE.dados.produtos[idx].catalogoPdf = null;
+      salvar();
+      ETAPAS[6].render(wrap);
     });
   });
   qsa('[data-remover-produto]', wrap).forEach(btn => {
@@ -762,7 +827,7 @@ function bindProdutos(wrap) {
   });
   qs('#addProduto', wrap).addEventListener('click', () => {
     if (STATE.dados.produtos.length >= 6) return;
-    STATE.dados.produtos.push({ nome: '', descricao: '', imagem: null });
+    STATE.dados.produtos.push({ nome: '', descricao: '', imagem: null, catalogoPdf: null });
     salvar();
     ETAPAS[6].render(wrap);
   });
@@ -783,12 +848,20 @@ function bindTom(wrap) {
    ========================================================= */
 
 function renderUploadPreview(arq, contexto, idx) {
-  const removeAttr = contexto === 'logo'
-    ? 'data-remover-upload="logo"'
-    : `data-remover-upload-produto="${idx}"`;
+  const ehPdf = arq.tipo === 'application/pdf' || (arq.nome || '').toLowerCase().endsWith('.pdf');
+
+  const mediaHTML = ehPdf
+    ? `<div class="upload__preview-icon"><i class="fa-solid fa-file-pdf"></i></div>`
+    : `<img src="${arq.dataURL}" alt="">`;
+
+  let removeAttr = '';
+  if (contexto === 'logo') removeAttr = 'data-remover-upload="logo"';
+  else if (contexto === 'produto-imagem') removeAttr = `data-remover-upload-produto="${idx}"`;
+  else if (contexto === 'produto-pdf') removeAttr = `data-remover-upload-pdf-produto="${idx}"`;
+
   return `
     <div class="upload__preview">
-      <img src="${arq.dataURL}" alt="">
+      ${mediaHTML}
       <div class="upload__preview-info">
         <div class="upload__preview-name">${esc(arq.nome)}</div>
         <div class="upload__preview-size">${formatarTamanho(arq.tamanho)}</div>
@@ -886,7 +959,8 @@ function gerarPayloadFinal() {
         nome: p.nome,
         slug: slug(p.nome),
         descricao: p.descricao,
-        imagem: p.imagem ? { nome: p.imagem.nome, tipo: p.imagem.tipo, tamanho: p.imagem.tamanho, dataURL: p.imagem.dataURL } : null
+        imagem: p.imagem ? { nome: p.imagem.nome, tipo: p.imagem.tipo, tamanho: p.imagem.tamanho, dataURL: p.imagem.dataURL } : null,
+        catalogoPdf: p.catalogoPdf ? { nome: p.catalogoPdf.nome, tipo: p.catalogoPdf.tipo, tamanho: p.catalogoPdf.tamanho, dataURL: p.catalogoPdf.dataURL } : null
       })),
     tom: {
       tom: d.tom.tom,
@@ -897,21 +971,52 @@ function gerarPayloadFinal() {
   };
 }
 
+const MODO_OFFLINE = location.protocol === 'file:' || location.hostname === '';
+
 async function enviar() {
   STATE.view = 'enviando';
   salvar();
   render();
 
-  // Fase 1: simula latência. Na Fase 2 isso vira POST pro backend.
   const payload = gerarPayloadFinal();
   console.log('[Briefing Oduo] Payload final:', payload);
 
-  await new Promise(r => setTimeout(r, 1800));
+  if (MODO_OFFLINE) {
+    // Modo offline (abrir index.html via file://): só simula o envio.
+    await new Promise(r => setTimeout(r, 1500));
+    STATE.view = 'sucesso';
+    STATE.dados._ultimoPayload = payload;
+    STATE.dados._resposta = { ok: true, offline: true };
+    salvar();
+    render();
+    return;
+  }
 
-  STATE.view = 'sucesso';
-  STATE.dados._ultimoPayload = payload;
-  salvar();
-  render();
+  // Modo conectado: POST de verdade pro backend Vercel
+  try {
+    const res = await fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data.erro || (data.erros ? data.erros.join('; ') : `HTTP ${res.status}`));
+    }
+
+    STATE.view = 'sucesso';
+    STATE.dados._ultimoPayload = payload;
+    STATE.dados._resposta = data;
+    salvar();
+    render();
+  } catch (e) {
+    console.error('[Briefing Oduo] Erro ao enviar:', e);
+    STATE.view = 'erro';
+    STATE.dados._erro = e.message;
+    salvar();
+    render();
+  }
 }
 
 /* =========================================================

@@ -1,0 +1,14 @@
+{
+  "name": "oduo-lp-kit-app",
+  "version": "0.1.0",
+  "description": "App de briefing Oduo - form multi-step + Vercel Function que cria repo de LP no GitHub",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
