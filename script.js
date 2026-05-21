@@ -181,36 +181,6 @@ function render() {
     topbarMeta.hidden = true;
     navbar.hidden = true;
     screen.appendChild(qs('#tplSucesso').content.cloneNode(true));
-    qs('#debugJson').textContent = JSON.stringify(STATE.dados, (k, v) => {
-      if (k === 'dataURL' && typeof v === 'string' && v.length > 100) return `[base64 ${v.length} chars]`;
-      return v;
-    }, 2);
-
-    // Se tem resposta do backend (modo conectado), mostra link do repo
-    const resp = STATE.dados._resposta;
-    if (resp && resp.repo && resp.repo.url) {
-      const info = qs('#repoInfo');
-      info.hidden = false;
-      info.style.cssText = 'background:var(--bg-alt);padding:16px;border-radius:10px;margin-top:18px;font-size:14px;';
-      info.innerHTML = `
-        <strong>Recebido com sucesso.</strong><br>
-        <span style="color:var(--text-muted);">Time interno: repo no GitHub criado em
-          <a href="${resp.repo.url}" target="_blank" rel="noopener" style="color:var(--primary);">
-            ${resp.repo.nome}
-          </a>
-        </span>
-      `;
-    } else if (resp && resp.offline) {
-      const info = qs('#repoInfo');
-      info.hidden = false;
-      info.style.cssText = 'background:var(--bg-alt);padding:14px;border-radius:10px;margin-top:18px;font-size:13px;color:var(--text-muted);';
-      info.textContent = 'Modo offline (file://) — nenhum repo foi criado. Faça deploy do app pra usar o envio real.';
-    }
-
-    qs('#btnReiniciar').addEventListener('click', () => {
-      resetar();
-      irPara(0);
-    });
     return;
   }
 
