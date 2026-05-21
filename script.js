@@ -985,9 +985,9 @@ async function enviar() {
     // Modo offline (abrir index.html via file://): só simula o envio.
     await new Promise(r => setTimeout(r, 1500));
     STATE.view = 'sucesso';
-    STATE.dados._ultimoPayload = payload;
     STATE.dados._resposta = { ok: true, offline: true };
-    salvar();
+    // Limpa o localStorage para o proximo cliente comecar fresh
+    localStorage.removeItem(STORAGE_KEY);
     render();
     return;
   }
@@ -1006,14 +1006,17 @@ async function enviar() {
     }
 
     STATE.view = 'sucesso';
-    STATE.dados._ultimoPayload = payload;
     STATE.dados._resposta = data;
-    salvar();
+    // Sucesso: limpa o localStorage para o proximo cliente comecar fresh.
+    // Mesmo se este cliente recarregar a pagina apos enviar, vai voltar
+    // pra tela inicial - o que e o comportamento desejado.
+    localStorage.removeItem(STORAGE_KEY);
     render();
   } catch (e) {
     console.error('[Briefing Oduo] Erro ao enviar:', e);
     STATE.view = 'erro';
     STATE.dados._erro = e.message;
+    // Em caso de erro, MANTEM no localStorage para o cliente tentar de novo
     salvar();
     render();
   }
