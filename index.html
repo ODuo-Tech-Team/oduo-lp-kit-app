@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Briefing da sua LP — Oduo</title>
+  <meta name="description" content="Preencha o briefing da sua landing page Oduo em 8 etapas rápidas.">
+  <meta name="theme-color" content="#ca651d">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Slab:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="app">
+
+    <header class="topbar" id="topbar">
+      <a href="#" class="topbar__logo" aria-label="Oduo">
+        <span class="topbar__logo-mark">O</span>duo
+      </a>
+      <div class="topbar__meta" id="topbarMeta" hidden>
+        <span class="topbar__step">Etapa <strong id="etapaAtual">1</strong> de 8</span>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12">
+          <div class="progress__bar" id="progressBar" style="width: 12.5%"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="screen" id="screen">
+      <!-- Renderizado dinamicamente por script.js -->
+    </main>
+
+    <footer class="navbar" id="navbar" hidden>
+      <button class="btn btn--ghost" id="btnVoltar" type="button">
+        <i class="fa-solid fa-arrow-left"></i> Voltar
+      </button>
+      <div class="navbar__hint" id="navbarHint"></div>
+      <button class="btn btn--primary" id="btnProximo" type="button">
+        Próximo <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </footer>
+
+  </div>
+
+  <template id="tplWelcome">
+    <section class="welcome">
+      <span class="welcome__eyebrow">Briefing Oduo</span>
+      <h1 class="welcome__title">Vamos construir <span class="text-primary">a sua landing page</span>.</h1>
+      <p class="welcome__desc">São 8 etapas rápidas. Você escolhe cor, fonte e produtos. A gente devolve a LP pronta em até 30 minutos.</p>
+      <ul class="welcome__steps">
+        <li><i class="fa-solid fa-circle-check"></i> Identificação e contato</li>
+        <li><i class="fa-solid fa-circle-check"></i> Logo, paleta e tipografia</li>
+        <li><i class="fa-solid fa-circle-check"></i> Sobre, produtos e diferenciais</li>
+        <li><i class="fa-solid fa-circle-check"></i> Confirmação e envio</li>
+      </ul>
+      <button class="btn btn--primary btn--lg" id="btnComecar" type="button">
+        Começar <i class="fa-solid fa-arrow-right"></i>
+      </button>
+      <p class="welcome__hint">Você pode pausar a qualquer momento — suas respostas ficam salvas no navegador.</p>
+    </section>
+  </template>
+
+  <template id="tplEnviando">
+    <section class="status">
+      <div class="status__icon status__icon--loading">
+        <i class="fa-solid fa-circle-notch fa-spin"></i>
+      </div>
+      <h2>Estamos preparando sua LP...</h2>
+      <p>Recebemos seu briefing. O time Oduo já foi notificado e vai construir sua landing page agora.</p>
+    </section>
+  </template>
+
+  <template id="tplSucesso">
+    <section class="status">
+      <div class="status__icon status__icon--ok">
+        <i class="fa-solid fa-check"></i>
+      </div>
+      <h2>Briefing enviado!</h2>
+      <p>Em até <strong>30 minutos</strong> você vai receber a URL da sua LP por WhatsApp pra aprovar.</p>
+      <details class="status__debug">
+        <summary>Ver dados enviados (modo dev)</summary>
+        <pre id="debugJson"></pre>
+      </details>
+      <button class="btn btn--ghost" id="btnReiniciar" type="button">
+        <i class="fa-solid fa-rotate-right"></i> Preencher outro briefing
+      </button>
+    </section>
+  </template>
+
+  <script src="data/paletas.js"></script>
+  <script src="data/fontes.js"></script>
+  <script src="script.js" defer></script>
+</body>
+</html>
