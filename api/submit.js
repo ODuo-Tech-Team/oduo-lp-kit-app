@@ -14,7 +14,9 @@ import { gerarRodarMd } from '../lib/rodar-md.js';
 import { criarRepo, repoExiste, commitBatch } from '../lib/github.js';
 import { notificarBriefingNovo } from '../lib/slack.js';
 
-const MAX_PAYLOAD_MB = 100;
+// Nota: Vercel Functions standalone tem limit de payload de 4.5MB.
+// Em produção, se precisarmos aceitar payloads maiores, mover uploads
+// pra Cloudinary (cliente envia direto, frontend manda só as URLs no JSON).
 
 export default async function handler(req, res) {
   // CORS
@@ -182,9 +184,3 @@ Hostinger em \`public_html/clientes/${slug}/\`. URL final:
     });
   }
 }
-
-export const config = {
-  api: {
-    bodyParser: { sizeLimit: `${MAX_PAYLOAD_MB}mb` }
-  }
-};
