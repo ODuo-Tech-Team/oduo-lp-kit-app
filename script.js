@@ -90,11 +90,21 @@ const el = (html) => {
   return wrap.firstElementChild;
 };
 
-function lerArquivo(file, limiteMB = 5) {
+// Limites por tipo de arquivo. O total precisa caber em ~3.5MB de binario
+// (== ~4.5MB base64, que é o limite de payload do Vercel Functions).
+const LIMITES_MB = { logo: 0.5, foto: 0.8, pdf: 1 };
+const MAX_PAYLOAD_BIN_MB = 3.5;
+
+function lerArquivo(file, limiteMB = 1) {
   return new Promise((resolve, reject) => {
     if (!file) return resolve(null);
-    if (file.size > limiteMB * 1024 * 1024) {
-      return reject(new Error(`Arquivo passa de ${limiteMB} MB. Comprima ou escolha outro.`));
+    const limiteBytes = limiteMB * 1024 * 1024;
+    if (file.size > limiteBytes) {
+      const tamanhoMB = (file.size / 1024 / 1024).toFixed(2);
+      return reject(new Error(
+        `Arquivo "${file.name}" tem ${tamanhoMB} MB — passa do limite de ${limiteMB} MB. ` +
+        `Comprima a imagem (ex: tinypng.com) ou escolha outra.`
+      ));
     }
     const reader = new FileReader();
     reader.onload = () => resolve({
@@ -106,6 +116,16 @@ function lerArquivo(file, limiteMB = 5) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function tamanhoTotalBinarioMB() {
+  let total = 0;
+  if (STATE.dados.marca.logo) total += STATE.dados.marca.logo.tamanho || 0;
+  STATE.dados.produtos.forEach(p => {
+    if (p.imagem) total += p.imagem.tamanho || 0;
+    if (p.catalogoPdf) total += p.catalogoPdf.tamanho || 0;
+  });
+  return total / 1024 / 1024;
 }
 
 function formatarTamanho(bytes) {
@@ -360,7 +380,7 @@ const ETAPAS = {
               ${d.logo ? renderUploadPreview(d.logo, 'logo') : `
                 <i class="fa-solid fa-cloud-arrow-up upload__icon"></i>
                 <div class="upload__label">Clique pra escolher o arquivo</div>
-                <div class="upload__hint">PNG, JPG, SVG ou WebP — até 5 MB</div>
+                <div class="upload__hint">PNG, JPG, SVG ou WebP — até 500 KB</div>
               `}
             </label>
           </div>
@@ -516,7 +536,7 @@ const ETAPAS = {
               ${p.imagem ? renderUploadPreview(p.imagem, 'produto-imagem', i) : `
                 <i class="fa-solid fa-image upload__icon"></i>
                 <div class="upload__label">Adicionar foto</div>
-                <div class="upload__hint">JPG, PNG ou WebP — até 5 MB</div>
+                <div class="upload__hint">JPG, PNG ou WebP — até 800 KB</div>
               `}
             </label>
           </div>
@@ -527,7 +547,7 @@ const ETAPAS = {
               ${p.catalogoPdf ? renderUploadPreview(p.catalogoPdf, 'produto-pdf', i) : `
                 <i class="fa-solid fa-file-pdf upload__icon"></i>
                 <div class="upload__label">Anexar catálogo</div>
-                <div class="upload__hint">PDF com especificações — até 10 MB</div>
+                <div class="upload__hint">PDF com especificações — até 1 MB</div>
               `}
             </label>
           </div>
@@ -670,7 +690,7 @@ function bindMarca(wrap) {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      STATE.dados.marca.logo = await lerArquivo(file);
+      STATE.dados.marca.logo = await lerArquivo(file, LIMITES_MB.logo);
       salvar();
       ETAPAS[3].render(wrap);
     } catch (err) {
@@ -779,7 +799,7 @@ function bindProdutos(wrap) {
       const file = e.target.files[0];
       if (!file) return;
       try {
-        STATE.dados.produtos[idx].imagem = await lerArquivo(file, 5);
+        STATE.dados.produtos[idx].imagem = await lerArquivo(file, LIMITES_MB.foto);
         salvar();
         ETAPAS[6].render(wrap);
       } catch (err) { alert(err.message); }
@@ -791,7 +811,7 @@ function bindProdutos(wrap) {
       const file = e.target.files[0];
       if (!file) return;
       try {
-        STATE.dados.produtos[idx].catalogoPdf = await lerArquivo(file, 10);
+        STATE.dados.produtos[idx].catalogoPdf = await lerArquivo(file, LIMITES_MB.pdf);
         salvar();
         ETAPAS[6].render(wrap);
       } catch (err) { alert(err.message); }
@@ -974,6 +994,16 @@ function gerarPayloadFinal() {
 const MODO_OFFLINE = location.protocol === 'file:' || location.hostname === '';
 
 async function enviar() {
+  // Validacao de tamanho total antes de tentar enviar
+  const totalMB = tamanhoTotalBinarioMB();
+  if (!MODO_OFFLINE && totalMB > MAX_PAYLOAD_BIN_MB) {
+    STATE.view = 'erro';
+    STATE.dados._erro = `Total de arquivos anexados: ${totalMB.toFixed(2)} MB. Limite: ${MAX_PAYLOAD_BIN_MB} MB. Volte e remova/comprima algum arquivo (use tinypng.com pra fotos, smallpdf.com pra PDFs).`;
+    salvar();
+    render();
+    return;
+  }
+
   STATE.view = 'enviando';
   salvar();
   render();
