@@ -190,6 +190,12 @@ function render() {
     topbarMeta.hidden = true;
     navbar.hidden = true;
     screen.appendChild(qs('#tplSucesso').content.cloneNode(true));
+    // Recomeça do zero pro proximo cliente (o localStorage ja foi limpo no envio)
+    qs('#btnNovoBriefing').addEventListener('click', () => {
+      resetar();
+      window.scrollTo({ top: 0 });
+      render();
+    });
     return;
   }
 
