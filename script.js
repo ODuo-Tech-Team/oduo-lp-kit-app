@@ -30,11 +30,9 @@ const ESTADO_INICIAL = () => ({
       textoInstitucional: '',
       diferenciais: ['', '', '']
     },
-    produtos: [
-      { nome: '', descricao: '', imagem: null, catalogoPdf: null },
-      { nome: '', descricao: '', imagem: null, catalogoPdf: null },
-      { nome: '', descricao: '', imagem: null, catalogoPdf: null }
-    ],
+    equipamentos: {
+      arquivos: []        // [{ nome, tamanho, tipo, dataURL }] — PDF, planilha, Word ou imagem
+    },
     tom: {
       tom: 'proximo-tecnico',
       referencias: ['', ''],
@@ -54,10 +52,10 @@ function salvar() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE));
   } catch (e) {
-    // QuotaExceeded (imagens muito grandes) — salva sem dataURLs
+    // QuotaExceeded (arquivos muito grandes) — salva sem dataURLs
     const copia = JSON.parse(JSON.stringify(STATE));
     if (copia.dados.marca.logo) copia.dados.marca.logo.dataURL = '';
-    copia.dados.produtos.forEach(p => { if (p.imagem) p.imagem.dataURL = ''; });
+    (copia.dados.equipamentos?.arquivos || []).forEach(a => { a.dataURL = ''; });
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(copia)); } catch {}
   }
 }
@@ -69,6 +67,11 @@ function carregar() {
     const carregado = JSON.parse(raw);
     if (carregado && carregado.view && carregado.dados) {
       STATE = carregado;
+      // Compat com briefings salvos antes da etapa de equipamentos por arquivo
+      if (!STATE.dados.equipamentos || !Array.isArray(STATE.dados.equipamentos.arquivos)) {
+        STATE.dados.equipamentos = { arquivos: [] };
+      }
+      delete STATE.dados.produtos;
     }
   } catch {}
 }
@@ -92,8 +95,17 @@ const el = (html) => {
 
 // Limites por tipo de arquivo. O total precisa caber em ~3.5MB de binario
 // (== ~4.5MB base64, que é o limite de payload do Vercel Functions).
-const LIMITES_MB = { logo: 0.5, foto: 0.8, pdf: 1 };
+const LIMITES_MB = { logo: 0.5, lista: 3 };
 const MAX_PAYLOAD_BIN_MB = 3.5;
+
+// Tipos aceitos na lista de equipamentos: PDF, planilha, Word e imagem.
+const ACCEPT_EQUIPAMENTOS =
+  '.pdf,.xls,.xlsx,.csv,.doc,.docx,' +
+  'image/*,application/pdf,' +
+  'application/vnd.ms-excel,' +
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,' +
+  'text/csv,application/msword,' +
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 function lerArquivo(file, limiteMB = 1) {
   return new Promise((resolve, reject) => {
@@ -121,10 +133,7 @@ function lerArquivo(file, limiteMB = 1) {
 function tamanhoTotalBinarioMB() {
   let total = 0;
   if (STATE.dados.marca.logo) total += STATE.dados.marca.logo.tamanho || 0;
-  STATE.dados.produtos.forEach(p => {
-    if (p.imagem) total += p.imagem.tamanho || 0;
-    if (p.catalogoPdf) total += p.catalogoPdf.tamanho || 0;
-  });
+  (STATE.dados.equipamentos.arquivos || []).forEach(a => { total += a.tamanho || 0; });
   return total / 1024 / 1024;
 }
 
@@ -479,72 +488,38 @@ const ETAPAS = {
     }
   },
 
-  /* ETAPA 6 — Produtos */
+  /* ETAPA 6 — Equipamentos (lista por arquivo, opcional) */
   6: {
     render(wrap) {
-      const lista = STATE.dados.produtos;
-      const produtosHTML = lista.map((p, i) => `
-        <div class="produto-card" data-idx="${i}">
-          <div class="produto-card__head">
-            <span class="produto-card__num">Produto ${i + 1}</span>
-            <button type="button" class="dyn-item__remove" data-remover-produto="${i}" ${lista.length <= 3 ? 'disabled' : ''} title="Remover">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-          <div class="field">
-            <label class="field__label">Nome <span class="req">*</span></label>
-            <input class="input" data-produto="${i}" data-campo="nome" value="${esc(p.nome)}" placeholder="Ex: Andaime fachadeiro">
-          </div>
-          <div class="field">
-            <label class="field__label">Descrição curta (1 frase) <span class="req">*</span></label>
-            <input class="input" data-produto="${i}" data-campo="descricao" value="${esc(p.descricao)}" placeholder="Ex: Estrutura modular para fachadas e revestimentos">
-          </div>
-          <div class="field">
-            <label class="field__label">Foto do produto <span class="req">*</span></label>
-            <label class="upload ${p.imagem ? 'is-filled' : ''}">
-              <input type="file" accept="image/png,image/jpeg,image/webp" data-produto-imagem="${i}">
-              ${p.imagem ? renderUploadPreview(p.imagem, 'produto-imagem', i) : `
-                <i class="fa-solid fa-image upload__icon"></i>
-                <div class="upload__label">Adicionar foto</div>
-                <div class="upload__hint">JPG, PNG ou WebP — até 800 KB</div>
-              `}
-            </label>
-          </div>
-          <div class="field">
-            <label class="field__label">Catálogo (PDF) <span class="opt">(opcional)</span></label>
-            <label class="upload ${p.catalogoPdf ? 'is-filled' : ''}">
-              <input type="file" accept="application/pdf" data-produto-pdf="${i}">
-              ${p.catalogoPdf ? renderUploadPreview(p.catalogoPdf, 'produto-pdf', i) : `
-                <i class="fa-solid fa-file-pdf upload__icon"></i>
-                <div class="upload__label">Anexar catálogo</div>
-                <div class="upload__hint">PDF com especificações — até 1 MB</div>
-              `}
-            </label>
-          </div>
+      const arquivos = STATE.dados.equipamentos.arquivos;
+      const arquivosHTML = arquivos.map((a, i) => `
+        <div class="equip-item">
+          ${renderUploadPreview(a, 'equipamento', i)}
         </div>
       `).join('');
 
       wrap.innerHTML = `
         <div class="etapa__head">
-          <span class="etapa__eyebrow">Etapa 6 — Produtos / Serviços</span>
-          <h1 class="etapa__title">O que vocês oferecem?</h1>
-          <p class="etapa__desc">Cada produto vira um card na seção de produtos. Mínimo 3, máximo 6.</p>
+          <span class="etapa__eyebrow">Etapa 6 — Equipamentos</span>
+          <h1 class="etapa__title">Tem a lista de equipamentos?</h1>
+          <p class="etapa__desc">Anexe um PDF, planilha, documento ou foto com os equipamentos/produtos. É opcional — se o cliente ainda não tiver a lista, pode pular esta etapa.</p>
         </div>
         <div class="etapa__body">
-          <div class="dyn-list" id="dyn-produtos">${produtosHTML}</div>
-          <button type="button" class="dyn-add" id="addProduto" ${lista.length >= 6 ? 'disabled' : ''}>
-            <i class="fa-solid fa-plus"></i> Adicionar produto
-          </button>
+          <div class="field">
+            <label class="field__label">Lista de equipamentos <span class="opt">(opcional)</span></label>
+            <label class="upload" id="uploadEquipamentos">
+              <input type="file" accept="${ACCEPT_EQUIPAMENTOS}" data-equipamentos multiple>
+              <i class="fa-solid fa-cloud-arrow-up upload__icon"></i>
+              <div class="upload__label">Clique pra escolher arquivos</div>
+              <div class="upload__hint">PDF, planilha (XLSX/CSV), Word ou imagem — até ${LIMITES_MB.lista} MB cada</div>
+            </label>
+            ${arquivos.length ? `<div class="equip-lista">${arquivosHTML}</div>` : ''}
+          </div>
         </div>
       `;
-      bindProdutos(wrap);
+      bindEquipamentos(wrap);
     },
-    validar() {
-      const erros = {};
-      const completos = STATE.dados.produtos.filter(p => p.nome.trim() && p.descricao.trim() && p.imagem);
-      if (completos.length < 3) erros.produtos = 'Preencha pelo menos 3 produtos completos (com nome, descrição e foto)';
-      return erros;
-    }
+    validar() { return {}; } // opcional — sempre pode avançar
   },
 
   /* ETAPA 7 — Tom e referências */
@@ -600,7 +575,7 @@ const ETAPAS = {
       const cor = d.marca.corPrimaria || (paleta ? paleta.primary : '—');
 
       const diferenciais = d.sobre.diferenciais.filter(x => x.trim());
-      const produtosCompletos = d.produtos.filter(p => p.nome.trim() && p.descricao.trim() && p.imagem);
+      const equipArquivos = d.equipamentos.arquivos || [];
 
       wrap.innerHTML = `
         <div class="etapa__head">
@@ -621,7 +596,7 @@ const ETAPAS = {
             ${item('Tipografia', fonte ? fonte.nome : '—')}
             ${item('Anos de mercado', d.sobre.anosMercado + (d.sobre.anosMercado ? ' anos' : ''))}
             ${item('Diferenciais', diferenciais.length ? `<ul>${diferenciais.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '—', null, true)}
-            ${item('Produtos', `${produtosCompletos.length} preenchido(s)` + (produtosCompletos.length ? `<ul>${produtosCompletos.map(p => `<li>${esc(p.nome)}${p.catalogoPdf ? ' <span style="color:var(--text-muted);font-size:12px;">(com catálogo)</span>' : ''}</li>`).join('')}</ul>` : ''), null, true)}
+            ${item('Equipamentos', equipArquivos.length ? `${equipArquivos.length} arquivo(s)<ul>${equipArquivos.map(a => `<li>${esc(a.nome)} <span style="color:var(--text-muted);font-size:12px;">(${formatarTamanho(a.tamanho)})</span></li>`).join('')}</ul>` : 'Não enviado (cliente ainda não tem a lista)', null, true)}
             ${item('Tom', tomLabel(d.tom.tom))}
           </div>
         </div>
@@ -754,72 +729,35 @@ function bindSobre(wrap) {
   });
 }
 
-function bindProdutos(wrap) {
-  qsa('input[data-produto][data-campo]', wrap).forEach(input => {
-    input.addEventListener('input', () => {
-      const idx = +input.dataset.produto;
-      const campo = input.dataset.campo;
-      STATE.dados.produtos[idx][campo] = input.value;
-      salvar();
-    });
-  });
-  qsa('input[data-produto-imagem]', wrap).forEach(input => {
-    input.addEventListener('change', async (e) => {
-      const idx = +input.dataset.produtoImagem;
-      const file = e.target.files[0];
-      if (!file) return;
+function bindEquipamentos(wrap) {
+  // Upload (multiplo): le cada arquivo e adiciona na lista. Falhas (ex: tamanho)
+  // sao acumuladas e mostradas juntas, sem abortar os arquivos validos.
+  qs('input[data-equipamentos]', wrap).addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const erros = [];
+    for (const file of files) {
       try {
-        STATE.dados.produtos[idx].imagem = await lerArquivo(file, LIMITES_MB.foto);
-        salvar();
-        ETAPAS[6].render(wrap);
-      } catch (err) { alert(err.message); }
-    });
-  });
-  qsa('input[data-produto-pdf]', wrap).forEach(input => {
-    input.addEventListener('change', async (e) => {
-      const idx = +input.dataset.produtoPdf;
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        STATE.dados.produtos[idx].catalogoPdf = await lerArquivo(file, LIMITES_MB.pdf);
-        salvar();
-        ETAPAS[6].render(wrap);
-      } catch (err) { alert(err.message); }
-    });
-  });
-  qsa('[data-remover-upload-pdf-produto]', wrap).forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const idx = +btn.dataset.removerUploadPdfProduto;
-      STATE.dados.produtos[idx].catalogoPdf = null;
-      salvar();
-      ETAPAS[6].render(wrap);
-    });
-  });
-  qsa('[data-remover-produto]', wrap).forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = +btn.dataset.removerProduto;
-      STATE.dados.produtos.splice(idx, 1);
-      salvar();
-      ETAPAS[6].render(wrap);
-    });
-  });
-  qsa('[data-remover-upload-produto]', wrap).forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const idx = +btn.dataset.removerUploadProduto;
-      STATE.dados.produtos[idx].imagem = null;
-      salvar();
-      ETAPAS[6].render(wrap);
-    });
-  });
-  qs('#addProduto', wrap).addEventListener('click', () => {
-    if (STATE.dados.produtos.length >= 6) return;
-    STATE.dados.produtos.push({ nome: '', descricao: '', imagem: null, catalogoPdf: null });
+        STATE.dados.equipamentos.arquivos.push(await lerArquivo(file, LIMITES_MB.lista));
+      } catch (err) {
+        erros.push(err.message);
+      }
+    }
     salvar();
     ETAPAS[6].render(wrap);
+    if (erros.length) alert(erros.join('\n\n'));
+  });
+
+  // Remover um arquivo da lista
+  qsa('[data-remover-equipamento]', wrap).forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = +btn.dataset.removerEquipamento;
+      STATE.dados.equipamentos.arquivos.splice(idx, 1);
+      salvar();
+      ETAPAS[6].render(wrap);
+    });
   });
 }
 
@@ -837,17 +775,29 @@ function bindTom(wrap) {
    Render helpers
    ========================================================= */
 
-function renderUploadPreview(arq, contexto, idx) {
-  const ehPdf = arq.tipo === 'application/pdf' || (arq.nome || '').toLowerCase().endsWith('.pdf');
+function iconeArquivo(arq) {
+  const nome = (arq.nome || '').toLowerCase();
+  const tipo = arq.tipo || '';
+  if (tipo === 'application/pdf' || nome.endsWith('.pdf')) return 'fa-file-pdf';
+  if (/\.(xlsx?|csv)$/.test(nome) || tipo.includes('excel') || tipo.includes('spreadsheet') || tipo === 'text/csv') return 'fa-file-excel';
+  if (/\.docx?$/.test(nome) || tipo.includes('word') || tipo.includes('document')) return 'fa-file-word';
+  return 'fa-file';
+}
 
-  const mediaHTML = ehPdf
-    ? `<div class="upload__preview-icon"><i class="fa-solid fa-file-pdf"></i></div>`
-    : `<img src="${arq.dataURL}" alt="">`;
+function ehImagem(arq) {
+  const nome = (arq.nome || '').toLowerCase();
+  return (arq.tipo || '').startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/.test(nome);
+}
+
+function renderUploadPreview(arq, contexto, idx) {
+  // Imagem com dataURL disponivel -> miniatura; senao mostra um icone por tipo.
+  const mediaHTML = (ehImagem(arq) && arq.dataURL)
+    ? `<img src="${arq.dataURL}" alt="">`
+    : `<div class="upload__preview-icon"><i class="fa-solid ${iconeArquivo(arq)}"></i></div>`;
 
   let removeAttr = '';
   if (contexto === 'logo') removeAttr = 'data-remover-upload="logo"';
-  else if (contexto === 'produto-imagem') removeAttr = `data-remover-upload-produto="${idx}"`;
-  else if (contexto === 'produto-pdf') removeAttr = `data-remover-upload-pdf-produto="${idx}"`;
+  else if (contexto === 'equipamento') removeAttr = `data-remover-equipamento="${idx}"`;
 
   return `
     <div class="upload__preview">
@@ -943,15 +893,14 @@ function gerarPayloadFinal() {
       textoInstitucional: d.sobre.textoInstitucional,
       diferenciais: d.sobre.diferenciais.filter(x => x.trim())
     },
-    produtos: d.produtos
-      .filter(p => p.nome.trim() && p.descricao.trim() && p.imagem)
-      .map(p => ({
-        nome: p.nome,
-        slug: slug(p.nome),
-        descricao: p.descricao,
-        imagem: p.imagem ? { nome: p.imagem.nome, tipo: p.imagem.tipo, tamanho: p.imagem.tamanho, dataURL: p.imagem.dataURL } : null,
-        catalogoPdf: p.catalogoPdf ? { nome: p.catalogoPdf.nome, tipo: p.catalogoPdf.tipo, tamanho: p.catalogoPdf.tamanho, dataURL: p.catalogoPdf.dataURL } : null
-      })),
+    equipamentos: {
+      arquivos: (d.equipamentos.arquivos || []).map(a => ({
+        nome: a.nome,
+        tipo: a.tipo,
+        tamanho: a.tamanho,
+        dataURL: a.dataURL
+      }))
+    },
     tom: {
       tom: d.tom.tom,
       referencias: d.tom.referencias.filter(x => x.trim()),

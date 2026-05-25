@@ -600,6 +600,20 @@ a { color: var(--primary); }
 }
 .upload__remove:hover { color: var(--danger); border-color: var(--danger); }
 
+/* Lista de arquivos de equipamentos anexados */
+.equip-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.equip-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--bg);
+}
+
 /* =========================================================
    Lista dinâmica (diferenciais, produtos)
    ========================================================= */

@@ -8,7 +8,7 @@
 //   SLACK_WEBHOOK_URL  Webhook do Slack (opcional - se ausente, pula a notificacao)
 //   ALLOWED_ORIGIN     CORS origin permitido (opcional - default *)
 
-import { validar, slugificar, decodeDataURL } from '../lib/payload.js';
+import { validar, slugificar, decodeDataURL, nomeAssetEquipamento } from '../lib/payload.js';
 import { gerarBriefingMd } from '../lib/briefing-md.js';
 import { gerarRodarMd } from '../lib/rodar-md.js';
 import { criarRepo, repoExiste, commitBatch } from '../lib/github.js';
@@ -87,9 +87,8 @@ export default async function handler(req, res) {
     // briefing.json - dump cru (sem dataURLs gigantes pra ficar legivel)
     const dumpLeve = JSON.parse(JSON.stringify(payload));
     if (dumpLeve.marca?.logo?.dataURL) dumpLeve.marca.logo.dataURL = '[base64 omitted]';
-    (dumpLeve.produtos || []).forEach(p => {
-      if (p.imagem?.dataURL) p.imagem.dataURL = '[base64 omitted]';
-      if (p.catalogoPdf?.dataURL) p.catalogoPdf.dataURL = '[base64 omitted]';
+    (dumpLeve.equipamentos?.arquivos || []).forEach(a => {
+      if (a.dataURL) a.dataURL = '[base64 omitted]';
     });
     files.push({
       path: 'briefing.json',
@@ -105,22 +104,13 @@ export default async function handler(req, res) {
       }
     }
 
-    // Produtos: imagem + catalogo PDF
-    (payload.produtos || []).forEach((p, i) => {
-      const baseSlug = p.slug || slugificar(p.nome) || `produto-${i + 1}`;
-
-      if (p.imagem?.dataURL) {
-        const dec = decodeDataURL(p.imagem.dataURL);
-        if (dec) {
-          files.push({ path: `assets/${baseSlug}.${dec.ext}`, content: dec.base64, encoding: 'base64' });
-        }
-      }
-
-      if (p.catalogoPdf?.dataURL) {
-        const dec = decodeDataURL(p.catalogoPdf.dataURL);
-        if (dec) {
-          files.push({ path: `assets/${baseSlug}-catalogo.pdf`, content: dec.base64, encoding: 'base64' });
-        }
+    // Equipamentos: lista anexada pelo cliente (PDF, planilha, Word ou imagem).
+    // Opcional — pode não vir nenhum arquivo.
+    (payload.equipamentos?.arquivos || []).forEach((arq, i) => {
+      if (!arq?.dataURL) return;
+      const dec = decodeDataURL(arq.dataURL);
+      if (dec) {
+        files.push({ path: nomeAssetEquipamento(arq, i), content: dec.base64, encoding: 'base64' });
       }
     });
 
